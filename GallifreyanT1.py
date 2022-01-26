@@ -2,37 +2,14 @@
 """
 Created on Tue Oct 26 18:22:57 2021
 
-@author: natha
+@author: Impronoucabl
 """
 import drawSvg as draw 
 
-from Custom import Divot_Dist_func, DotSize_func, Semi_Spread_func, Syl_Spread_func
+from Custom import Divot_Dist_func, DotSize_func, Semi_Spread_func
 from Custom import Init_Dist_func, Init_Spread_func, Init_Rad_func
+from Custom import Node_pair_Dash, Node_pair_Split_1
 from Base_Func import *
-
-def Save(canvas, SVG = False):
-    text = 'Save1'
-    if SVG:
-        canvas.saveSvg(text + '.svg')    
-    else:
-        canvas.savePng(text + '.png')
-    print(text + ' saved')
-
-def Refresh(canvas, col, ang_pad):
-    global COLLISION_DIST
-    global PADDING 
-    global C_SIZE
-    global LETT_SIZE
-    global VOWEL_SIZE
-    global DOCK_SPACE
-    global ANG_PADDING
-    COLLISION_DIST = col
-    PADDING = COLLISION_DIST*10
-    C_SIZE = canvas
-    LETT_SIZE = C_SIZE/25
-    VOWEL_SIZE = LETT_SIZE/2
-    DOCK_SPACE = C_SIZE/50
-    ANG_PADDING = ang_pad
 
 def PreRender(size = None):
     if size is None:
@@ -71,9 +48,7 @@ class Circle():
             'double_let': False, 
             'ext_alph':   False,
             'lin_col':    'black',
-            'n_col':      'black',
-            'b_col':      'white',
-            'skel_col':   'black'
+            'b_col':      'white'
             }
         if settings is not None:
             if isinstance(settings, dict):
@@ -154,18 +129,6 @@ class Circle():
             source = self
         return source.Dist2Cir(target)
     
-    def Destroy(self):
-        self.Loc.Destroy()
-        self.Loc = []
-        while self in self.parent.Freeze:
-            self.parent.Freeze.remove(self)
-        while self in self.parent.Attachments:
-            self.parent.Attachments.remove(self)
-        for orphan in self.children:
-            orphan.Destroy()
-            orphan.prv = orphan.nxt = None
-        self.children = []
-    
     def Dist2Cir(self, Cir2):
         dist = self.Loc.Dist2Coord(Cir2.Loc)
         return dist - self.outer_rad - Cir2.outer_rad
@@ -214,15 +177,6 @@ class Circle():
         else:
             return True
     
-    def Min_Dist_lst(self):
-        lst = []
-        for kids in self.children:
-            lst2 = []
-            for kid2 in self.children:
-                lst2.append(_test(kids, kid2, distance = True))
-            lst.append(min(lst2))
-        return lst
-    
     def Node_gen(self):
         for kids in self.children:
             kids.Node_gen()
@@ -230,175 +184,19 @@ class Circle():
             self.parent.spare_dash_nodes.update(self.spare_dash_nodes)
     
     def Node_pair(self, **options):
-        if options['curved_nodes']:
-            self.Node_pair_Curve()
         if options['paired_nodes']:
-            self.Node_pair_Dash()
+            Node_pair_Dash(self)
         count = 0
         while len(self.spare_dash_nodes) > 0 and count < 100:
-            self.Node_pair_POI_1()
-            self.Node_pair_Split_1()
-            self.Node_pair_Split_1()
+            Node_pair_Split_1(self)
+            Node_pair_Split_1(self)
             count += 1
         if count > 99:
-            print('Unfinished Node pairing')
-        
-    def Node_pair_Curve(self):
-        POI_set = self.POI_Set()
-        node_remain = self.spare_dash_nodes.copy()
-        for loc in POI_set:
-            rad = loc.Circle.radius
-            rad_lim = CURVE_NOD_RAD_RAT_LIM*rad
-            for node1 in node_remain:
-                if node1.pair is not None:
-                    continue
-                dist1 = loc.Dist2Coord(node1.parent.Loc)
-                if dist1 > rad_lim:
-                    continue
-                if loc.Circle.inner_rad - CUR_ND_TOL <= dist1 <= loc.Circle.outer_rad + CUR_ND_TOL:
-                    continue
-                if dist1 < node1.parent.radius:
-                    continue
-                ang1 = node1.parent.Loc.Ang2Coord(loc)
-                ang1 += math.acos(node1.parent.radius/dist1)
-                if not node1.angle_check(ang1):
-                    continue
-                for node2 in node_remain:
-                    if node2.pair is not None or node1.parent is node2.parent:
-                        continue
-                    dist2 = loc.Dist2Coord(node2.parent.Loc)
-                    if dist2 > rad_lim or dist2 - rad < CUR_ND_TOL:
-                        continue
-                    if node2.parent.radius > dist2:
-                        continue
-                    ang2 = node2.parent.Loc.Ang2Coord(loc)
-                    ang2 += math.acos(node2.parent.radius/dist2)
-                    if not node2.angle_check(ang2):
-                        continue
-                    node1.Loc.Set_ang(ang1)
-                    node2.Loc.Set_ang(ang2)
-                    if abs(loc.Dist2Coord(node1.Loc) - loc.Dist2Coord(node2.Loc)) < 2.5*COLLISION_DIST:
-                        new_dist1 = (loc.Dist2Coord(node1.Loc) + loc.Dist2Coord(node2.Loc))/2
-                        A = Node(loc,
-                                 new_dist1,
-                                 (node1.thickness + node2.thickness)/2,
-                                 'Center',
-                                 settings = self.Opt_dict)
-                        node1.pair = A
-                        node2.pair = A
-                        A.pair = (node1, node2)
-                        self.spare_dash_nodes.remove(node1)
-                        self.spare_dash_nodes.remove(node2)
-                        print(f'curved {node1.parent} & {node2.parent}')
-                    if node2.pair is not None:
-                        break
-                if node1.pair is not None:
-                    continue
-    
-    def Node_pair_Dash(self):
-        node_remain = self.spare_dash_nodes.copy()
-        for node1 in node_remain:
-            if node1.pair is not None:
-                continue
-            for node2 in node_remain:
-                if node2.pair is not None or node2.parent is node1.parent:
-                    continue
-                if node2.parent.parent is node1.parent.parent:
-                    continue
-                Check1 = node1.Node_check(node2)
-                if Check1:
-                    node1.pair_node(node2)
-                    self.spare_dash_nodes.remove(node1)
-                    self.spare_dash_nodes.remove(node2)
-                    break
-                
-    def Node_pair_POI_1(self, All = False):
-        node_remain = self.spare_dash_nodes.copy()
-        POI_set = self.POI_Set(Dot_node = False)
-        Found = False
-        for node1 in node_remain:
-            for Loc in POI_set:
-                ang = node1.Loc.Ang2Coord(Loc)
-                if node1.angle_check(ang):
-                    Found = True
-                    node1.Loc.Set_ang(ang)
-                    self.spare_dash_nodes.remove(node1)
-                    break
-            if Found and not All:
-                break              
-                
-    def Node_pair_Split_1(self, All = False):
-        node_remain = self.spare_dash_nodes.copy()
-        Found = False
-        for node1 in node_remain:
-            if node1.pair is not None:
-                continue
-            ang_set = set()
-            half = node1.min_ang + node1.max_ang/2
-            if (2*half)%(2*math.pi) > 0:
-                ang_set.add(half)
-            twins = []
-            if node1.parent.parent.docked:
-                for kids in self.children:
-                    if node1.parent.parent in kids.Attachments:
-                        for dad in kids.Attachments:
-                            if dad is node1.parent.parent:
-                                continue
-                            twins += dad.prime.children
-            for siblings in node1.parent.children + twins:
-                if siblings in node_remain:
-                    continue
-                ang_set.add(siblings.Loc.ang + math.pi)
-                ang_set.add((siblings.Loc.ang + node1.min_ang)/2)
-                ang_set.add((siblings.Loc.ang + node1.max_ang)/2)
-                for siblings2 in node1.parent.children:
-                    if siblings2 in node_remain or siblings2 is siblings:
-                        continue
-                    ang_set.add((siblings.Loc.ang + siblings2.Loc.ang)/2)
-                    space = abs(siblings.Loc.ang - siblings2.Loc.ang)
-                    ang_set.add(siblings.Loc.ang + space)
-                    ang_set.add(siblings.Loc.ang - space)
-            for angle in ang_set:
-                Nangle = (angle + math.pi*2)%(2*math.pi)
-                Pangle = (angle + math.pi)%(2*math.pi)
-                if node1.angle_check(Nangle):
-                    node1.Loc.Set_ang(Nangle)
-                    self.spare_dash_nodes.remove(node1)
-                    Found = True
-                    break
-                if node1.angle_check(Pangle):
-                    node1.Loc.Set_ang(Pangle)
-                    self.spare_dash_nodes.remove(node1)
-                    Found = True
-                    break
-            if Found and not All:
-                break
-    
-    def POI_Set(self, POI_set = None, Dot_node = None):
-        if POI_set is None:
-            POI_set = set()
-        if Dot_node is None:
-            Dot_node = False
-        else:
-            Dot_node = True
-        POI_set.add(self.Loc)
-        for kids in self.children:
-            kids.POI_Set(POI_set, Dot_node = Dot_node)
-        return POI_set
+            print('Unfinished Node pairing')    
     
     def Render(self, canvas = None):
         for kids in self.children:
             kids.Render(canvas = canvas)
-    
-    def ReScale(self, Scale, Frozen = None):
-        if Frozen is None:
-            Frozen = set()
-        self.Loc.ReScale(Scale, Frozen = Frozen)
-        self.radius *= math.sqrt(Scale)
-        self.outer_rad = self.radius + self.thickness
-        self.inner_rad = max(0,self.radius - self.thickness)
-        for kids in self.children:
-            kids.ReScale(Scale, Frozen = Frozen)
     
     def Restore(self, loc_lst):
         for point in loc_lst:
@@ -659,7 +457,7 @@ class Word(Circle):
         sett = self.Opt_dict.copy()
         sett['vow_splt'] = True
         sett['double_let'] = False
-        section_rad = Syl_Spread_func(self.txt_lst, self.consonants)
+        section_rad = Init_Spread_func(len(self.txt_lst))
         rad_size = LETT_SIZE
         'rad_size = Init_Rad_func(self.radius - PADDING, num)'
         for n,Syl in enumerate(self.txt_lst):
@@ -691,7 +489,7 @@ class Word(Circle):
             canvas.append(draw.Circle(self.Loc.Xord,
                                       self.Loc.Yord,
                                       self.outer_rad,
-                                      fill = self.Opt_dict['skel_col'],
+                                      fill = self.Opt_dict['lin_col'],
                                       stroke = 'none'))
             canvas.append(draw.Circle(self.Loc.Xord,
                                       self.Loc.Yord,
@@ -707,7 +505,7 @@ class Word(Circle):
                 RingError = False
             if RingError:
                 raise ValueError(f'Letters do not intersect {self.text} ring')
-            outer_path = draw.Path(fill = self.Opt_dict['skel_col'], stroke = 'none')
+            outer_path = draw.Path(fill = self.Opt_dict['lin_col'], stroke = 'none')
             inner_path = draw.Path(fill = self.Opt_dict['b_col'],   stroke = 'none')
             Ostart = 0
             Istart = 0
@@ -897,26 +695,13 @@ class Word(Circle):
                         Syl.Loc.Shift_CW()
                 elif angle < 0 and Syl.Rspace() > 2*ANG_PADDING:
                     for n in range(2):
-                        Syl.Loc.Shift_CCW()
-            
-                'self.Jiggle()  '          
+                        Syl.Loc.Shift_CCW()        
 
 class Sentence(Circle):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)      
         self.txt_lst = self.text.split()
         self.dock_lst = []
-    
-    def Compress(self):
-        dists = [kids.Loc.dist for kids in self.children]
-        furthest = self.children[dists.index(max(dists))]
-        dists = [kids.Dist2Cir(furthest) for kids in self.children]
-        dists.remove(min(dists))
-        if min(dists) > 2*COLLISION_DIST:
-            furthest.Loc.Shift_dist(-COLLISION_DIST)
-            return True
-        else: 
-            return False
         
     def Dock_Match(self, minnies, biggies):
         for wrd in self.children:
@@ -1174,9 +959,7 @@ class Sentence(Circle):
     
     def Generate(self, iterations = 1, preview = None, nodes = None, **Options):
         default = {
-            'rescale': True,
             'grow': True,
-            'curved_nodes': True,
             'paired_nodes': True
             }
         for (key, value) in Options.items():
@@ -1188,15 +971,12 @@ class Sentence(Circle):
         if not preview:
             (minnies, biggies) = self.Skele_Size()
             (minnies, biggies) = self.Skele_Dock(minnies = minnies, biggies = biggies)
-            res = False
             grow = False
             for n in range(iterations):
                 self.Dock_Match(minnies, biggies)
                 if n == iterations - 1:
-                    res = default['rescale']
                     grow = default['grow']
-                self.Skele_Pol(minnies, biggies,Rescale = res, Grow = grow)
-            self.Phantom_dock()
+                self.Skele_Pol(minnies, biggies, Grow = grow)
         canvas = self.SkeleRend()
         if nodes:
             self.Nodes(**default)
@@ -1215,56 +995,6 @@ class Sentence(Circle):
     def Nodes(self, **Options):
         self.Node_gen()
         self.Node_pair(**Options)
-        
-    def Point_Seed(self):
-        if len(self.children) <= 1:
-            return []
-        angles = [(wrd.Loc.ang*wrd.nxt.radius + wrd.nxt.Loc.ang*wrd.radius)/(wrd.radius+wrd.nxt.radius) for wrd in self.children]
-        angles[-1] += math.pi
-        'Last point will actually be biased in the wrong direction'
-        points = [Coord((seed, self.radius)) for seed in angles]
-        return points
-    
-    def Phantom_dock(self):
-        undock = []
-        for wrd in self.children:
-            for Syl in wrd.docks:
-                if Syl.docked:
-                    continue
-                for wrd2 in self.children:
-                    if wrd2 is wrd:
-                        continue
-                    for Syl2 in wrd2.docks:
-                        if Syl.Loc.Dist2Coord(Syl2.Loc) < 1.1*Syl.prime.radius:
-                            if Syl2.docked:
-                                new_loc = Syl2.Loc
-                            new_loc = (Syl.Loc*Syl.radius+Syl2.Loc*Syl2.radius)/(Syl.radius + Syl2.radius)
-                            dist = max(Syl.prime.radius, Syl2.prime.radius)
-                            '+ min(Syl.Loc.Dist2Coord(new_loc), Syl2.Loc.Dist2Coord(new_loc))'
-                            Syl.Loc.Set_XY(new_loc)
-                            Syl.Set_radius(dist, True)
-                            Syl.docked = True
-                            wrd.Freeze.append(Syl)
-                            wrd.Grow()
-                            undock.append(Syl)
-                            if not Syl2.docked:
-                                Syl2.Loc.Set_XY(new_loc)
-                                Syl2.Set_radius(dist, True)
-                                Syl2.docked = True
-                                wrd2.Freeze.append(Syl2)
-                                wrd2.Grow()
-                                undock.append(Syl2)
-                                while not (wrd.Collision_check() or wrd2.Collision_check()):
-                                    dist += 1
-                                    Syl.Set_radius(dist, True)
-                                    Syl2.Set_radius(dist, True)
-                            print('Phantom dock successful')
-                            break
-        for wrd in self.children:
-            for Syl in wrd.docks:
-                if Syl in undock:
-                    Syl.docked = False
-        self.Update()
     
     def Pull_in(self):
         dists = [kid.Loc.dist - kid.outer_rad for kid in self.children]
@@ -1431,28 +1161,22 @@ class Sentence(Circle):
                         docked = self.Docking(dock, wrd.prv, Wrd_Mv = True)
         return minnies, biggies
                 
-    def Skele_Pol(self, minnies, biggies, Rescale = None, Grow = None):
-        if Rescale is None:
-            Rescale = True
+    def Skele_Pol(self, minnies, biggies, Grow = None):
         if Grow is None:
             Grow = True
         if len(self.children) > 1:
             count = 0
             while not self.Collision_check():    
                 Pulled = self.Pull_in()
-                Compressed = self.Compress()
                 Centered = self.ReCenter(stepsize = 0.2)
                 if count > 100:
-                    print('Compress timed out')
+                    print('Polish timed out')
                     break
-                elif not Compressed and not Centered and not Pulled:
-                    print('Compress/Center/Pull limit reached')
+                elif not Centered and not Pulled:
+                    print('Center/Pull limit reached')
                     break
                 else:
                     count += 1
-        if Rescale:
-            dists = [wrd.Loc.dist + wrd.outer_rad for wrd in self.children]
-            self.ReScale(self.inner_rad/max(dists))
         if Grow:
             for wrd in self.children:
                 if wrd in minnies:
@@ -1474,20 +1198,6 @@ class Sentence(Circle):
             kids.Loc.Set_XY((-Xmid*stepsize,-Ymid*stepsize), True)
             kids.Update()
         return True
-            
-    def Redraw(self):
-        self.Update()
-        canvas = self.SkeleRend()
-        self.Render(canvas)
-        return canvas
-    
-    def ReScale(self, Scale, Frozen = None):
-        if Frozen is None:
-            Frozen = set()
-        Frozen.add(self.Loc)
-        for kids in self.children:
-            kids.ReScale(Scale, Frozen = Frozen)
-        self.Update()
     
     def Revert(self, Syl, Wrd, backup):
         (Syl_Back, Syl_Rad, Syl_par_rad, Wrd_Back) = backup
@@ -1507,7 +1217,7 @@ class Sentence(Circle):
         canvas.append(draw.Circle(self.Loc.Xord,
                                   self.Loc.Yord,
                                   self.outer_rad,
-                                  fill = self.Opt_dict['skel_col'],
+                                  fill = self.Opt_dict['lin_col'],
                                   stroke = 'none'))
         canvas.append(draw.Circle(self.Loc.Xord,
                                   self.Loc.Yord,
@@ -1537,7 +1247,7 @@ class Sentence(Circle):
         distance = Init_Dist_func(self.radius,num)
         sett = self.Opt_dict.copy()
         for n, wrd in enumerate(self.txt_lst):
-            blah = Word(Coord((section_rad[n], distance[n]), Center = (0,0)), 
+            blah = Word(Coord((section_rad[n], distance), Center = (0,0)), 
                  rad_size, 
                  self.thickness*0.7, 
                  wrd.lower(),
@@ -1722,7 +1432,7 @@ class Letter(Circle):
             if self.cType[0] == 3:
                 section_rad = Semi_Spread_func(self.parent)
             for n in range(self.cType[2]):
-                N = Node(Coord((section_rad[n], self.radius), Center = self.Loc),
+                N = Node(Coord(((section_rad[n] + self.Loc.ang)%(2*math.pi), self.radius), Center = self.Loc),
                                 0,
                                 2,
                                 Type,
@@ -1741,7 +1451,7 @@ class Letter(Circle):
                                   self.Loc.Yord,
                                   self.radius,
                                   fill = 'none',
-                                  stroke = self.Opt_dict['skel_col'],
+                                  stroke = self.Opt_dict['lin_col'],
                                   stroke_width = 2*self.thickness))           
         super().Render(canvas = canvas)
     
@@ -1882,13 +1592,6 @@ class Node(Circle):
         self.Loc.Set_ang(angle)
         node.Loc.Set_ang((math.pi + angle) % (2*math.pi))
         
-    def POI_Set(self, POI_set, Dot_node = None):
-        if Dot_node is None:
-            Dot_node = False
-        elif self.text == 'Dot':
-            POI_set.add(self.Loc)
-        return
-        
     def Render(self, canvas = None):
         if self.Drawn:
             return
@@ -1896,7 +1599,7 @@ class Node(Circle):
             canvas.append(draw.Circle(self.Loc.Xord,
                                     self.Loc.Yord,
                                     self.outer_rad,
-                                    fill = self.Opt_dict['n_col'],
+                                    fill = self.Opt_dict['lin_col'],
                                     stroke = 'none'))
         elif self.text == 'Dash':
             if self.pair is None:
@@ -1933,18 +1636,7 @@ class Node(Circle):
                                     stroke_width = self.thickness))
                 self.pair.Drawn = True
             elif self.pair.text == 'Center':
-                self.pair.Render(canvas = canvas)
-        elif self.text =='Center':
-            ang1 = self.Loc.Ang2Coord(self.pair[0].Loc)
-            ang2 = self.Loc.Ang2Coord(self.pair[1].Loc)
-            canvas.append(draw.Arc(self.Loc.Xord,
-                                self.Loc.Yord,
-                                self.radius,
-                                GalRad2MathDeg(ang1),
-                                GalRad2MathDeg(ang2),
-                                stroke = self.Opt_dict['lin_col'],
-                                stroke_width = self.thickness,
-                                fill = 'none'))
+                self.pair.Render(canvas = canvas)            
             ''' Debug rendering
             canvas.append(draw.Circle(self.pair[0].Loc.Xord,
                                     self.pair[0].Loc.Yord,
@@ -1996,13 +1688,10 @@ class Node(Circle):
 #%% if__name__==__main__
 
 if __name__ == '__main__':
-    setng = {'empty_dock': True, 'double_let':True}
+    setng = {'empty_dock': True, 'double_let':True, 'vow_splt': True}
     text = input('Type in text to translate:')
     if text == "":
-    	text = "There is no substitute for quality"
+    	text = "Hello world"
     M = Sentence((0,0),C_SIZE/2 - PADDING,9,text.lower())
-    'settings = setng'
-    D = M.Generate(rescale = False)
-    Save(D)
-    'B = M.Point_Seed()'
+    D = M.Generate()
     

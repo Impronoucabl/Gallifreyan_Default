@@ -2,11 +2,11 @@
 """
 Created on Fri Dec 10 19:13:06 2021
 
-@author: natha
+@author: Impronoucabl
 """
 import math
 
-WARNINGS = False
+WARNINGS = True
 
 vowels = ('a','e','i','o','u')
 NEAR_ZERO = 0.005
@@ -43,105 +43,6 @@ def GalRad2MathRad(radian):
     return radian - math.pi/2
 def MathRad2GalRad(radian):
     return (radian + math.pi/2) % (2*math.pi)
-
-def Divot_Dist_func(Wrd_cir, lett_cir):
-    divot_dist = Wrd_cir.outer_rad - lett_cir.inner_rad + 1
-    circ_dist = Wrd_cir.inner_rad - lett_cir.outer_rad - 2*lett_cir.thickness
-    semi_dist = Wrd_cir.outer_rad
-    return (divot_dist, circ_dist, semi_dist)
-def DotSize_func(Syllable):
-    Radius= Syllable.radius
-    if Syllable.secondary:
-        Radius *= DOUB_LETT_RAT        
-    if Syllable.docked:
-        DotSize = min(Radius/6, VOWEL_SIZE)
-        DotDist = Radius
-    elif Syllable.text[-1] in ('e','i','u'):
-        DotSize = Radius/3
-        DotDist = Radius
-    elif Radius > 0.4*Syllable.parent.radius:
-        DotSize = Radius/5
-        DotDist = 0.7*Radius
-    else:
-        DotSize = Radius/4
-        DotDist = 0.5*Radius
-    return DotSize, DotDist
-def Semi_Spread_func(Syl):
-    num = Syl.prime.cType[2]
-    if num == 1:
-        spread = (1,)
-    elif num == 2:
-        spread = (5/6, 7/6)
-    elif num == 3:
-        spread = (3/5, 1, 7/5)
-    elif num == 4:
-        spread = (1/2, 5/6, 7/6, 3/2)
-    bound = Syl.prime.theta - 1.2*ANG_PADDING*(Syl.Loc.dist/Syl.parent.radius)**5
-    spread = [(n - 1)*bound for n in spread]
-    return tuple(map(lambda ang: ang + math.pi + Syl.Loc.ang, spread))
-def Syl_Spread_func(lst, consons):
-    num = len(lst)
-    vowel_num = num - consons
-    WEIGHT_FACTOR = 4
-    n = math.pi/(consons + vowel_num/WEIGHT_FACTOR)
-    ang = 0
-    spread = []
-    for i,syl in enumerate(lst):
-        if lst[i-1] in vowels:
-            ang += n/WEIGHT_FACTOR
-        else:
-            ang += n
-        if i == 0:
-            ang = 0
-        spread.append(ang)
-        if i + 1 == len(lst):
-            if lst[0] in vowels:
-                ang += n/WEIGHT_FACTOR
-            else:
-                ang += n
-            continue
-        if lst[i + 1] in vowels:
-            ang += n/WEIGHT_FACTOR
-        else:
-            ang += n
-    return spread
-    
-def Init_Dist_func(radius, num):
-    print('TODO:implement doyle spiral')
-    dist = 0.95*radius - Init_Rad_func(radius, num)
-    dists = [dist]*num
-    if num == 7 or num == 9:
-        dists[-1] = 1
-    return dists
-def Init_Spread_func(num):
-    spread = []
-    if num == 7 or num == 9:
-        spread.append(math.pi*2 - ANG_PADDING)
-        num -= 1
-    spread = [n*math.pi*2/num for n in range(num)] + spread
-    return spread
-def Init_Rad_func(radius, num):
-    magic = {
-        1:1,
-        2:0.5,
-        3:math.sqrt(3)/(math.sqrt(3)+2),
-        4:1/(1+math.sqrt(2)),
-        5:1/(1+math.sqrt(2*(1+1/math.sqrt(5)))),
-        6:1/3,
-        7:1/3,
-        8:1/(1+math.sqrt(2*(2+math.sqrt(2)))),
-        9:1/(1+math.sqrt(2*(2+math.sqrt(2))))
-            }
-    if num > 9:
-        print('implent doyle spiral please')
-        return radius/num
-    if isinstance(num, float):
-        a = math.floor(num)
-        b = math.ceil(num)
-        ans = (magic[a]*(b - num) + magic[b]*(num - a))
-    else:
-        ans = magic[num]
-    return radius*ans
 
 class Coord():
     Center = None
@@ -192,16 +93,6 @@ class Coord():
             Xoffset = self.Center.Xord
             Yoffset = self.Center.Yord
         return (Xoffset, Yoffset) 
-    
-    def ReScale(self, Scale, Frozen = None):
-        if self in Frozen:
-            return
-        if self.Center is not None and self.Center not in Frozen:
-            self.Center.ReScale(Scale, Frozen)
-        (X,Y) = self.Offsets()
-        self.Set_XY((X + math.sqrt(Scale)*self.dist*math.cos(GalRad2MathRad(self.ang)), 
-                     Y + math.sqrt(Scale)*self.dist*math.sin(GalRad2MathRad(self.ang))))
-        Frozen.add(self)
     
     def RotateA(self, target, angle, clockwise = False):
         restore = self.Center
